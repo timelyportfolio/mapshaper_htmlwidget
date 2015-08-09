@@ -14,8 +14,6 @@ HTMLWidgets.widget({
 
   renderValue: function(el, x, instance) {
 
-    el.innerText = x.message;
-
   },
 
   resize: function(el, width, height, instance) {

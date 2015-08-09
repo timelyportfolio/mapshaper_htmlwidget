@@ -4,7 +4,7 @@
 \alias{mapshaper}
 \title{<Add Title>}
 \usage{
-mapshaper(message, width = NULL, height = NULL)
+mapshaper(..., width = "100\%", height = "100\%")
 }
 \description{
 <Add Description>
