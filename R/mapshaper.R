@@ -9,7 +9,7 @@ mapshaper <- function(..., width = "100%", height = "100%") {
 
   # forward options using x
   x = list(
-    message = message
+    ...
   )
 
   # create widget
