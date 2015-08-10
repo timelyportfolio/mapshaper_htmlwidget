@@ -3,7 +3,7 @@
 [mapshaper](https://github.com/mbloch/mapshaper) is an incredibly powerful set of tools to simplify and edit maps from `Shapefile`, `geoJSON`, `TopoJSON`, and other file formats.  This `htmlwidget` brings `mapshaper` to your `R` experience.
 
 ```r
-#devtools::install_github("timelyportfolio/mapshaper_htmlwidget)
+#devtools::install_github("timelyportfolio/mapshaper_htmlwidget")
 
 library(mapshaperWidget)
 library(tmap)
