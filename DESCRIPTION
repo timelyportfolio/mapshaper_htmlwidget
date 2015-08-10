@@ -24,7 +24,7 @@ Authors@R: c(
 Maintainer: Kent Russell <kent.russell@timelyportfolio.com>
 Description: Use mapshaper in R as an htmlwidget for a more seamless experience.
 License: MIT + file LICENSE
-Depends:
+Imports:
       geojsonio,
       htmltools
 LazyData: TRUE

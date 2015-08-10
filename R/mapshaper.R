@@ -7,6 +7,8 @@
 #'   is not \code{json}, then automatic conversion will be attempted
 #'   with \code{\link[geojsonio]{geojson_json}}.
 #'
+#' @example examples/example_mapshape.R
+#'
 #' @import htmlwidgets geojsonio
 #'
 #' @export
