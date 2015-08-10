@@ -20,6 +20,15 @@ library('geojsonio')
 library('sp')
 library('mapshaperWidget')
 
+###  straight from geojson
+alabama <- paste0(
+  readLines(
+    "https://raw.githubusercontent.com/glynnbird/usstatesgeojson/master/alabama.geojson"
+  )
+  ,collapse = " "
+)
+mapshaper(alabama)
+
 ###  example from geojsonio vignette
 poly1 <- Polygons(
   list(
