@@ -2,11 +2,17 @@
 % Please edit documentation in R/mapshaper.R
 \name{mapshaper}
 \alias{mapshaper}
-\title{<Add Title>}
+\title{Mapshaper in R}
 \usage{
 mapshaper(..., width = "100\%", height = "100\%")
 }
+\arguments{
+\item{...}{One or many input lists, data.frame, or spatial class.  If \code{input}
+  is not \code{json}, then automatic conversion will be attempted
+  with \code{\link[geojsonio]{geojson_json}}.}
+}
 \description{
-<Add Description>
+Use \href{www.mapshaper.org}{mapshaper} within R to analyze and simplify
+your spatial objects.
 }
 

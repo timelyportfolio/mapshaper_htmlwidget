@@ -3,4 +3,5 @@
 export(mapshaper)
 export(mapshaperOutput)
 export(renderMapshaper)
+import(geojsonio)
 import(htmlwidgets)

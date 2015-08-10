@@ -1,15 +1,46 @@
-#' <Add Title>
+#' Mapshaper in R
 #'
-#' <Add Description>
+#' Use \href{www.mapshaper.org}{mapshaper} within R to analyze and simplify
+#' your spatial objects.
 #'
-#' @import htmlwidgets
+#' @param ... One or many input lists, data.frame, or spatial class.  If \code{input}
+#'   is not \code{json}, then automatic conversion will be attempted
+#'   with \code{\link[geojsonio]{geojson_json}}.
+#'
+#' @import htmlwidgets geojsonio
 #'
 #' @export
-mapshaper <- function(..., width = "100%", height = "100%") {
+mapshaper <- function( ..., width = "100%", height = "100%") {
+  input <- lazyeval::auto_name(lazyeval::lazy_dots(...))
+
+  if(!is.null(input)){
+    files <- lapply(
+      names(input)
+      ,function(name){
+        x <- lazyeval::lazy_eval(input[[name]])
+
+        x <- x
+
+        if(!inherits(x,c("character","json","list"))) {
+          # attempt conversion with geojsonio
+          x <- geojson_json( x )
+        }
+
+        if(inherits(x,"json")){
+          x <- as.character(x)
+        }
+
+        list(
+          name = name
+          ,geojson = x
+        )
+      }
+    )
+  }
 
   # forward options using x
   x = list(
-    ...
+    files = files
   )
 
   # create widget
@@ -89,7 +120,7 @@ S-499.59,394.88-499.68,395.47z"/></g></svg>
 
 <div id="simplify-control-wrapper"><div id="simplify-control"><span class="label">Simplify</span>
 <div class="slider">
-<div class="handle"><img src="images/slider_handle_v1.png" /></div>
+<div class="handle"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAACohjseAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA2ZpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMC1jMDYwIDYxLjEzNDc3NywgMjAxMC8wMi8xMi0xNzozMjowMCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDpBNzU1MTAwNkExMDVFMTExOTlEMEZERTY2RkYxQTc3RSIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDpGMTc5NDA2MzhGMTkxMUUyQjhEREI3RjFGQ0M4NjMxMiIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDpGMTc5NDA2MjhGMTkxMUUyQjhEREI3RjFGQ0M4NjMxMiIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ1M1LjEgV2luZG93cyI+IDx4bXBNTTpEZXJpdmVkRnJvbSBzdFJlZjppbnN0YW5jZUlEPSJ4bXAuaWlkOjVCOTg1QzBCNUQwQ0UxMTE4Qzc4Q0ZCMDE3OEU0QjA5IiBzdFJlZjpkb2N1bWVudElEPSJ4bXAuZGlkOkE3NTUxMDA2QTEwNUUxMTE5OUQwRkRFNjZGRjFBNzdFIi8+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+iUan1wAABSlJREFUeNrsmn9IG1ccwO9ySeSyxp8Z6tTBjBrpHwOVkgpFaWFDGNv+Dt0fJRbHKBTG3Fy3sT8GjrlZxgb9YzLD/piEMShsYzBwtMgGNmyJWrBqdK5U21qnJZofFxNzt+87zvG8XC4xXpJ7ZQ++vKeXvPt+7vvrvXehBUGgnuRGH3eCUj8gmqb/BywEoBnkBUkcIE+DnARhpescyB2Qf0BWQH4BmQRJaA1IaQEoSfX+/v556K+DhIWjN/Sd69Ic1di8qlLwxvM8C0p9AH0IRNBIQjDnFTQ3CKUmhQRjksnkRegfaggml4fSPZh8AfNy4Fgs1lpWVuaFYVeRcol/b2/PBfdcll9gGEZbQLjRqzDptzA8UeSEGUmlUq/BvX/A/2k0GrUDTCQSrxsMhmvowZWoKqTALS+BDl9pDhiPx89Llit5kyw5gcYmk+n4gNFo1AkT3cTqWKkbB8nnLOjkM5vNxwPc2dlpZFn2FgwbdLbMvM9x3OmKiop1tQ8Z1C5OTk4aIXN9DwW1IdfCW0RpQLohHfO1IA3l4F0I6I/1vFuApPOexWL5BC2qjgS4vr7+TE1NzVIJysGRy8f29rajsbHxwVFclK6qqhokAA61E5KudM4WXF1dtdXV1f1NCKBoxY2Njeeam5u35BeUApQG17wAQUwKnGhFpDP0V+WxqGRBQzgc/gP2WZ0kHU2AQQJWq/UUyjtqgPTc3JwNTL1J4vnL5uZms91uv4tbMc1F6+vr+0g9iAILnoHurloM0rB4PUUqINIduolMFqQlX3aQCoh0x1gERQtCs5MKiHTH4TKViVqCD4Nrs9VBmrD6l1YP5ZXBqHQMSHBLZF3JAGCEoCWaXPdoVkDYfjyCYCUV8HFWwFQq9RfDMHYSAZHuuQAGYZP7IqGAwWyAQjwe/zPbUZxuM0wiEZDvJtI2vIuLi7/q8PwlJ1lbW/tNbcNLS2KED94CN+0gyXqQHGeamppOw3BfsmLaUk04WOZwHPedxWIhChDpjLmnkMlFRfLZ2dkJeCJRUlwT6Yp0xi2XccMrQTMrKyufmc3my4Qkly9bWlreRolU2tGrWxDJwsLCFyRYEemIdMV1z3Ymc2BFI2TUd1iW/Ujnsfdhe3v7p1Jy4eWAmV6DiRk1Eon4e3p6+mDpVq/XzDk8PPwGxF9SCS6TBQ/FotfrfdbpdP4OkLU6W3c+8vl8Z1wu1z2l2MsGeBCfIuTU1JQTagz6qYduXp9Bre7r7e31YXB8JktRam4quTETCARclZWVHj3QhUIhd2dnp1eCSykll1wAcVcVk87MzMzF8vLyz6kSvsLe3d19s6Oj42ssqfCZ4HIBPBSPSKanp1+22WweiMmnir2Z3dracnd3d/+EWU4VTnGxrTS3NJE4KbrB/Px8N2Sw20XMlrfRPeVwsBgRcrFOzqdymCUNXV1dprGxsQtWq/X9QmVYlCnD4fDwwMDAN36/P4k9aH55eVmEa21t1QxQHpOiDA0NWSFVX4IFwVtauS1yRyjgV6FEXRsZGQljsSZKMBj8z3JtbW2aAuLZ9RDo6OhoNaTtl2AX8orJZDqbR0lBv5y4GYvFfoSy9PPg4OBjORhix+EKBYh/7wAQB6bdbjfb399/Dtz3HMMwbbC3rAF5Xh5XINvomAHc8Mb4+PgNj8fDYTHPy8bU0tJSWsw5HI6CAMqtiVuVVpBsSUwuPP63ElixAJVAKRkopdALCr2ArUYEteKdj6tRGoKq9UrWU+spvQHmO/+T/dP/QrZ/BRgAuUpsiCdkKvMAAAAASUVORK5CYII=" /></div>
 <div class="track"></div>
 </div>
 <input type="text" value="label" class="clicktext" />
@@ -182,7 +213,10 @@ a smoother appearance.</div></div></div></div>
 
   <div id="import-options" class="main-area popup-dialog">
   <div class="info-box">
+
   <div id="import-intro">
+  <h3>R htmlwidget</h3>
+  <p><span class="inline-btn btn" id="r-selection-btn"><span class="label-text">Retrieve</span>
   <h3>Edit a file</h3>
   <p>Drag and drop or  <span class="inline-btn btn" id="file-selection-btn"><span class="label-text">select</span></span> a file to import.
 Shapefile, GeoJSON and TopoJSON files

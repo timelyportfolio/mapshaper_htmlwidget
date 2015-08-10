@@ -14,6 +14,7 @@ HTMLWidgets.widget({
 
   renderValue: function(el, x, instance) {
 
+
     // stackoverflow http://stackoverflow.com/questions/27159179/how-to-convert-blob-to-file-in-javascript?rq=1
     function blobToFile(theBlob, fileName){
       //A Blob() is almost a File() - it's just missing the two properties below which we will add
@@ -23,10 +24,24 @@ HTMLWidgets.widget({
     }
 
     // https://developer.mozilla.org/en-US/docs/Web/API/Blob?redirectlocale=en-US&redirectslug=DOM%2FBlob
-    var jsonBlob = blobToFile(
-      new Blob([JSON.stringify(x.geojson)], {type : 'application/json'}),// the blob
-      "test.geojson"
-    )
+    var jsonFiles = []
+    if(Array.isArray(x.files)){
+      x.files.forEach( function(fl) {
+        //if object assume source was a list from R
+        if(typeof(fl.geojson) === "object") {
+          fl.geojson = JSON.stringify(fl.geojson);
+        }
+
+        var bf = blobToFile(
+          new Blob(
+            [fl.geojson],
+            {type : 'application/json'}
+          ),// the blob
+          fl.name + ".json"
+        )
+        jsonFiles.push( bf );
+      })
+    }
 
     // http://www.2ality.com/2013/06/triggering-events.html
     //   https://developer.mozilla.org/en-US/docs/Web/Events/drop
@@ -38,9 +53,11 @@ HTMLWidgets.widget({
     	}
     );
 
-    dropEvent.dataTransfer = { files: [jsonBlob] }
+    dropEvent.dataTransfer = { files: jsonFiles }
 
-    document.body.dispatchEvent( dropEvent );
+    document.getElementById('r-selection-btn').onclick = function(){
+      document.body.dispatchEvent( dropEvent );
+    }
   },
 
   resize: function(el, width, height, instance) {

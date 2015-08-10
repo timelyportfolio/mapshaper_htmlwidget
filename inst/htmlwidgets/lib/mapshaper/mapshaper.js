@@ -12119,22 +12119,25 @@ gui.addTableShapes = function(lyr, dataset) {
       arcs = [],
       shapes = [],
       aspectRatio = 1.1,
+      usePoints = false,
       x, y, col, row, blockSize;
   if (dataset.arcs) {
     error("Unable to visualize data table.");
   }
-  if (n > 20000) {
+  if (n > 10000) {
+    usePoints = true;
+    gutter = 0;
+    cellWidth = 4;
+    cellHeight = 4;
+    aspectRatio = 1.45;
+  } else if (n > 5000) {
     cellWidth = 5;
     gutter = 3;
     aspectRatio = 1.45;
-  } else if (n > 5000) {
+  } else if (n > 1000) {
+    gutter = 3;
     cellWidth = 8;
-    gutter = 4;
     aspectRatio = 1.3;
-  } else if (n > 2000) {
-    gutter = 5;
-    cellWidth = 10;
-    aspectRatio = 1.2;
   }
 
   if (n < 25) {
@@ -12147,15 +12150,23 @@ gui.addTableShapes = function(lyr, dataset) {
     row = i % blockSize;
     col = Math.floor(i / blockSize);
     x = col * (cellWidth + gutter);
-    y = -row * cellHeight - 1e6; // out of range of geographic layers
-    arcs.push(getArc(x, y, cellWidth, cellHeight));
-    shapes.push([[i]]);
+    y = cellHeight * (blockSize - row);
+    if (usePoints) {
+      shapes.push([[x, y]]);
+    } else {
+      arcs.push(getArc(x, y, cellWidth, cellHeight));
+      shapes.push([[i]]);
+    }
   }
 
-  dataset.arcs = new ArcCollection(arcs);
+  if (usePoints) {
+    lyr.geometry_type = 'point';
+  } else {
+    dataset.arcs = new ArcCollection(arcs);
+    lyr.geometry_type = 'polygon';
+  }
   lyr.shapes = shapes;
-  lyr.geometry_type = 'polygon';
-  lyr.menu_type = 'data record';
+  lyr.data_type = 'table';
 
   function getArc(x, y, w, h) {
     return [[x, y], [x + w, y], [x + w, y - h], [x, y - h], [x, y]];
@@ -13239,12 +13250,10 @@ function LayerControl(model) {
   function describeLyr(lyr) {
     var n = MapShaper.getFeatureCount(lyr),
         str, type;
-    if (lyr.menu_type) {
-      type = lyr.menu_type;
+    if (lyr.data_type == 'table' || (lyr.data && !lyr.shapes)) {
+      type = 'data record';
     } else if (lyr.geometry_type) {
       type = lyr.geometry_type + ' feature';
-    } else if (lyr.data) {
-      type = 'data record';
     }
     if (type) {
       str = utils.format('%,d %s%s', n, type, utils.pluralSuffix(n));
@@ -13291,7 +13300,7 @@ function LayerControl(model) {
       model.clearMode();
     });
     // delete button
-    El('<img>').attr('src', 'images/close.png').appendTo(entry)
+    El('<img>').attr('src', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAQlJREFUeNrUV1ERwyAM7aagUpCAlEqpAyQgoRKwMAdYmIOW7eiux0Z45ELpcvd+eiHvNSQBhqGz3ZjrxgCVfHsEPFuKfRGaAB+wZuCjj5ImdgRpDk5CyMwgTjFz99gKkO+wMSZskuRHEaelnb0dKrd4mqY3SiSAH1mYLhd0Nyo46Oeq/v4YlAqO+lFZMKiANDjik8D8EuCR1KYEDPJ9Yn71fbG4UEOKNZ0LGmkjRARIvkbOOgElERXkHwH34SLWfQu6F2H3NsyegI0Gkb3kKO5+GJHdIHgc61JLmoYXEoPOhaUB+VJ7KV2EyUfOhDRnpp0qTO7DREueFyoOkNLTzNYQ/9XjtIltAgwA+WPbXCwTDKkAAAAASUVORK5CYII=').appendTo(entry)
     .on('mouseup', function(e) {
       var otherLyr = model.findAnotherLayer(lyr);
       if (!otherLyr) {
@@ -14341,6 +14350,13 @@ function InfoControl(model, hit) {
 
   model.on('select', update);
 
+  document.addEventListener('keydown', function(e) {
+    if (e.keyCode == 27 && isOn() && !model.getMode()) { // esc key closes
+      btn.toggleClass('selected');
+      update();
+    }
+  });
+
   hit.on('change', function(e) {
     var types;
     if (e.properties) {
@@ -14386,13 +14402,25 @@ MapShaper.getFieldEditorTypes = function(rec, table) {
 
 
 
+MapShaper.getBoundsOverlap = function(bb1, bb2) {
+  var area = 0;
+  if (bb1.intersects(bb2)) {
+    area = (Math.min(bb1.xmax, bb2.xmax) - Math.max(bb1.xmin, bb2.xmin)) *
+      (Math.min(bb1.ymax, bb2.ymax) - Math.max(bb1.ymin, bb2.ymin));
+  }
+  return area;
+};
+
 // Test if map should be re-framed to show updated layer
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
-  var boundsChanged = !prevBounds || !prevBounds.equals(newBounds);
+  if (!prevBounds) return true;
+  // TODO: consider similarity of prev and next bounds
+  //var overlapPct = 2 * MapShaper.getBoundsOverlap(newBounds, prevBounds) /
+  //    (newBounds.area() + prevBounds.area());
+  var boundsChanged = !prevBounds.equals(newBounds);
   var intersects = newBounds.intersects(mapBounds);
   // TODO: compare only intersecting portion of layer with map bounds
   var areaRatio = newBounds.area() / mapBounds.area();
-
   if (!boundsChanged) return false; // don't reset if layer extent hasn't changed
   if (!intersects) return true; // reset if layer is out-of-view
   return areaRatio > 500 || areaRatio < 0.05; // reset if layer is not at a viewable scale
@@ -14423,7 +14451,7 @@ function MshpMap(model) {
       },
       hoverStyles = {
         polygon: {
-          fillColor: "rgba(255, 120, 162, 0.2)", // "#ffebf1",
+          fillColor: "rgba(255, 117, 165, 0.2)", // "#ffebf1",
           strokeColor: "black",
           strokeWidth: 1.2
         }, point:  {
@@ -14481,7 +14509,7 @@ function MshpMap(model) {
   model.on('update', function(e) {
     var prevBounds = _activeGroup ?_activeGroup.getBounds() : null,
         group = findGroup(e.dataset),
-        needReset;
+        needReset = false;
     if (!group) {
       group = addGroup(e.dataset);
     } else if (e.flags.presimplify || e.flags.simplify || e.flags.proj || e.flags.arc_count) {
@@ -14498,6 +14526,7 @@ function MshpMap(model) {
     updateGroupStyle(activeStyle, group);
     _activeGroup = group;
     needReset = gui.mapNeedsReset(group.getBounds(), prevBounds, _ext.getBounds());
+    needReset = needReset || e.layer.data_type == 'table'; // kludge to make tables recenter
     _ext.setBounds(group.getBounds()); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
@@ -14548,7 +14577,7 @@ function MshpMap(model) {
   }
 
   function calcDotSize(n) {
-    return n < 20 && 5 || n < 500 && 4 || 3;
+    return n < 20 && 5 || n < 500 && 4 || n < 50000 && 3 || 2;
   }
 
   function refreshLayers() {
@@ -17470,13 +17499,12 @@ MapShaper.mergeDatasets = function(arr) {
 
 MapShaper.mergeArcs = function(arr) {
   var dataArr = arr.map(function(arcs) {
-    var data = arcs.getVertexData();
-    if (data.zz) {
-      error("[mergeArcs()] Merging arcs with z data is not supported");
+    if (arcs.getRetainedInterval() > 0) {
+      verbose("Baking-in simplification setting.");
+      arcs.flatten();
     }
-    return data;
+    return arcs.getVertexData();
   });
-
   var xx = utils.mergeArrays(utils.pluck(dataArr, 'xx'), Float64Array),
       yy = utils.mergeArrays(utils.pluck(dataArr, 'yy'), Float64Array),
       nn = utils.mergeArrays(utils.pluck(dataArr, 'nn'), Int32Array);
@@ -17800,8 +17828,8 @@ function calcTransMercM(lat, e) {
 function AlbersNYT(opts) {
   var lambert = new LambertConformalConic({lng0:-96, lat1:33, lat2:45, lat0:39, spherical: true});
   return new MixedProjection(new AlbersUSA(opts))
-    .addFrame(lambert, {lat:63, lng:-152}, {lat:27, lng:-115}, 6000000, 3000000, 0.31, 29.2)  // AK
-    .addFrame(lambert, {lat:20.9, lng:-157}, {lat:28.2, lng:-106.6}, 2000000, 4000000, 0.9, 40); // HI
+    .addFrame(lambert, {lat:63, lng:-152}, {lat:27, lng:-115}, 6e6, 3e6, 0.31, 29.2)  // AK
+    .addFrame(lambert, {lat:20.9, lng:-157}, {lat:28.2, lng:-106.6}, 3e6, 5e6, 0.9, 40); // HI
 }
 
 function AlbersUSA(opts) {
@@ -18889,9 +18917,8 @@ function Console(model) {
     if (kc == 27) { // esc
       if (editing) {
         activeEl.blur();
-      } else {
-        model.clearMode(); // esc escapes other modes as well
       }
+      model.clearMode(); // esc escapes other modes as well
       capture = true;
     } else if (kc == 8 && !editing) {
       capture = true; // prevent delete from leaving page
@@ -19217,10 +19244,12 @@ function Model() {
     }
   };
 
-
-
   this.getEditingLayer = function() {
     return editing || {};
+  };
+
+  this.getMode = function() {
+    return mode;
   };
 
   // return a function to trigger this mode
