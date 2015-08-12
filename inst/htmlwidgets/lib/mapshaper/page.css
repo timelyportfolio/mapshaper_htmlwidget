@@ -222,13 +222,17 @@ div.error-box > div {
 	height: 149px;
 }
 
-div.option-menu .advanced-options {
+.option-menu .advanced-options {
 	width: 210px;
 	background: rgba(255, 255, 255, 0.4);
 	border: 1px solid #999;
 	padding: 0 3px;
 	height: 17px;
 	font-size: 12px;
+}
+
+#export-options .option-menu .advanced-options {
+	width: 225px;
 }
 
 #mshp-not-supported {
@@ -335,7 +339,7 @@ div.option-menu .advanced-options {
 /* --- Console control ------------ */
 
 #console {
-	z-index: 50;
+	z-index: 30;
 	pointer-events: none;
 	/* background-color: rgba(0,0,0,0.8); */
 	display: none;
@@ -364,7 +368,7 @@ div.option-menu .advanced-options {
 #console-buffer > div {
 	white-space: pre;
 	text-align: left;
-	width: 620px;
+	width: 640px;
 	margin: 0 auto;
 }
 
@@ -526,7 +530,7 @@ body.simplify #layer-control-btn {
 .popup {
 	box-sizing: border-box;
 	position: absolute;
-	z-index: 30;
+	z-index: 40;
 	top: 12px;
 	right: 12px;
 	background-color: white;

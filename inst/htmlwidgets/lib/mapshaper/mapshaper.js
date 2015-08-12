@@ -2683,7 +2683,7 @@ var geom = api.geom = {};
 var cli = api.cli = {};
 var utils = api.utils = Utils.extend({}, Utils);
 
-MapShaper.VERSION = '0.3.6';
+MapShaper.VERSION = '0.3.7';
 MapShaper.LOGGING = false;
 MapShaper.TRACING = false;
 MapShaper.VERBOSE = false;
@@ -2727,6 +2727,10 @@ var message = function() {
   }
 };
 
+// alias for message; useful in web UI for sending some messages to the
+// debugging console instead of the command line.
+var consoleMessage = message;
+
 var verbose = function() {
   if (MapShaper.VERBOSE && MapShaper.LOGGING) {
     MapShaper.logArgs(arguments);
@@ -2749,11 +2753,15 @@ MapShaper.formatStringsAsGrid = function(arr) {
   var longest = arr.reduce(function(len, str) {
         return Math.max(len, str.length);
       }, 0),
-      colWidth = longest + 1,
+      colWidth = longest + 2,
       perLine = Math.floor(80 / colWidth) || 1;
-  return arr.reduce(function(str, name, i) {
-    if (i > 0 && i % perLine === 0) str += '\n';
-    return str + ' ' + utils.rpad(name, colWidth-1, ' ');
+  return arr.reduce(function(memo, name, i) {
+    var col = i % perLine;
+    if (i > 0 && col === 0) memo += '\n';
+    if (col < perLine - 1) { // right-pad all but rightmost column
+      name = utils.rpad(name, colWidth - 2, ' ');
+    }
+    return memo +  '  ' + name;
   }, '');
 };
 
@@ -3382,13 +3390,17 @@ var SimplifyControl = function(model) {
   var _value = 1;
   var el = El('#simplify-control-wrapper');
   var menu = El('#simplify-options').on('click', gui.handleDirectEvent(model.clearMode));
+  var slider, text;
 
   new SimpleButton('#simplify-options .submit-btn').on('click', onSubmit);
   new SimpleButton('#simplify-options .cancel-btn').on('click', model.clearMode);
   new ModeButton('#simplify-btn', 'simplify', model);
   model.addMode('simplify', turnOn, turnOff);
+  model.on('select', function() {
+    if (model.getMode() == 'simplify') model.clearMode();
+  });
 
-  var slider = new Slider("#simplify-control .slider");
+  slider = new Slider("#simplify-control .slider");
   slider.handle("#simplify-control .handle");
   slider.track("#simplify-control .track");
   slider.on('change', function(e) {
@@ -3402,11 +3414,10 @@ var SimplifyControl = function(model) {
     control.dispatchEvent('simplify-end');
   });
 
-  var text = new ClickText("#simplify-control .clicktext");
+  text = new ClickText("#simplify-control .clicktext");
   text.bounds(0, 1);
   text.formatter(function(val) {
     if (isNaN(val)) return '-';
-
     var pct = val * 100;
     var decimals = 0;
     if (pct <= 0) decimals = 1;
@@ -3431,15 +3442,15 @@ var SimplifyControl = function(model) {
   });
 
   function turnOn() {
-    var dataset = model.getEditingLayer().dataset;
-    if (!MapShaper.datasetHasPaths(dataset)) {
-      gui.alert("This dataset can not be simplified");
+    var target = model.getEditingLayer();
+    if (!MapShaper.layerHasPaths(target.layer) || target.layer.data_type == 'table') {
+      gui.alert("This layer can not be simplified");
       return;
     }
-    if (dataset.arcs.getVertexData().zz) {
+    if (target.dataset.arcs.getVertexData().zz) {
       // TODO: try to avoid calculating pct (slow);
       showSlider(); // need to show slider before setting; TODO: fix
-      control.value(dataset.arcs.getRetainedPct());
+      control.value(target.dataset.arcs.getRetainedPct());
     } else {
       menu.show();
     }
@@ -3691,11 +3702,16 @@ Dbf.readAsciiString = function(bin, field) {
 };
 
 Dbf.readStringBytes = function(bin, size, buf) {
+  // TODO: simplify by reading backwards from end of field
   var c;
   for (var i=0; i<size; i++) {
     c = bin.readUint8();
     if (c === 0) break;
     buf[i] = c;
+  }
+  // ignore trailing spaces (DBF fields are typically padded w/ spaces)
+  while (i > 0 && buf[i-1] == 32) {
+    i--;
   }
   return i;
 };
@@ -3857,14 +3873,14 @@ DbfReader.prototype.findStringEncoding = function() {
 
   // Show a sample of decoded text if non-ascii-range text has been found
   if (encoding && samples.length > 0) {
-    msg = "[dbf] Detected encoding: " + encoding;
+    msg = "Detected DBF text encoding: " + encoding;
     if (encoding in Dbf.encodingNames) {
       msg += " (" + Dbf.encodingNames[encoding] + ")";
     }
-    message(msg);
+    consoleMessage(msg);
     msg = MapShaper.decodeSamples(encoding, samples);
     msg = MapShaper.formatStringsAsGrid(msg.split('\n'));
-    message("[dbf] Sample text:" + (msg.length > 60 ? '\n' : '') + msg);
+    consoleMessage("Sample text containing non-ascii characters:" + (msg.length > 60 ? '\n' : '') + msg);
   }
   return encoding;
 };
@@ -3872,7 +3888,7 @@ DbfReader.prototype.findStringEncoding = function() {
 
 // Return up to @size buffers containing text samples
 // with at least one byte outside the 7-bit ascii range.
-// TODO: remove duplication with readRows()
+// TODO: filter out duplicate samples
 DbfReader.prototype.getNonAsciiSamples = function(size) {
   var samples = [];
   var stringFields = this.header.fields.filter(function(f) {
@@ -5530,7 +5546,7 @@ function ArcCollection() {
   // Return array of z-values that can be removed for simplification
   //
   this.getRemovableThresholds = function(nth) {
-    if (!_zz) error("ArcCollection#getRemovableThresholds() Missing simplification data.");
+    if (!_zz) error("[arcs] Missing simplification data.");
     var skip = nth | 1,
         arr = new Float64Array(Math.ceil(_zz.length / skip)),
         z;
@@ -5545,7 +5561,7 @@ function ArcCollection() {
 
   this.getArcThresholds = function(arcId) {
     if (!(arcId >= 0 && arcId < this.size())) {
-      error("ArcCollection#getArcThresholds() invalid arc id:", arcId);
+      error("[arcs] Invalid arc id:", arcId);
     }
     var start = _ii[arcId],
         end = start + _nn[arcId];
@@ -5973,6 +5989,11 @@ MapShaper.copyDataset = function(dataset) {
     d2.arcs = d2.arcs.getFilteredCopy();
   }
   return d2;
+};
+
+// make a stub copy if the no_replace option is given, else pass thru src layer
+MapShaper.getOutputLayer = function(src, opts) {
+  return opts && opts.no_replace ? {geometry_type: src.geometry_type} : src;
 };
 
 // Make a deep copy of a layer
@@ -9328,20 +9349,20 @@ TopoJSON.pathImporters = {
 
 
 
-api.convertPolygonsToInnerLines = function(lyr, arcs) {
+api.convertPolygonsToInnerLines = function(lyr, arcs, opts) {
   if (lyr.geometry_type != 'polygon') {
     stop("[innerlines] Command requires a polygon layer");
   }
   var arcs2 = MapShaper.convertShapesToArcs(lyr.shapes, arcs.size(), 'inner'),
-      lyr2 = MapShaper.convertArcsToLineLayer(arcs2);
+      lyr2 = MapShaper.convertArcsToLineLayer(arcs2, null);
   if (lyr2.shapes.length === 0) {
     message("[innerlines] No shared boundaries were found");
   }
-  lyr2.name = lyr.name;
+  lyr2.name = opts && opts.no_replace ? null : lyr.name;
   return lyr2;
 };
 
-api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
+api.convertPolygonsToTypedLines = function(lyr, arcs, fields, opts) {
   if (lyr.geometry_type != 'polygon') {
     stop("[lines] Command requires a polygon layer");
   }
@@ -9349,7 +9370,8 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
       outerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'outer'),
       typeCode = 0,
       allArcs = [],
-      allData = [];
+      allData = [],
+      innerArcs, lyr2;
 
   function addArcs(typeArcs) {
     var typeData = utils.repeat(typeArcs.length, function(i) {
@@ -9370,21 +9392,21 @@ api.convertPolygonsToTypedLines = function(lyr, arcs, fields) {
       if (!lyr.data.fieldExists(field)) {
         stop("[lines] Unknown data field:", field);
       }
-      var dissolved = api.dissolvePolygons(lyr, arcs, {field: field}),
+      var dissolved = api.dissolve(lyr, arcs, {field: field}),
           dissolvedArcs = MapShaper.convertShapesToArcs(dissolved.shapes, arcCount, 'inner');
       dissolvedArcs = utils.difference(dissolvedArcs, allArcs);
       addArcs(dissolvedArcs);
     });
   }
 
-  var innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
+  innerArcs = MapShaper.convertShapesToArcs(lyr.shapes, arcCount, 'inner');
   innerArcs = utils.difference(innerArcs, allArcs);
   addArcs(innerArcs);
-
-  var lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
-  lyr2.name = lyr.name;
+  lyr2 = MapShaper.convertArcsToLineLayer(allArcs, allData);
+  lyr2.name = opts && opts.no_replace ? null : lyr.name;
   return lyr2;
 };
+
 
 MapShaper.convertArcsToLineLayer = function(arcs, data) {
   var shapes = MapShaper.convertArcsToShapes(arcs),
@@ -11428,6 +11450,14 @@ function validateOutputOpts(cmd) {
     }
   }
 
+  if (o.delimiter) {
+    // convert "\t" '\t' \t to tab
+    o.delimiter = o.delimiter.replace(/^["']?\\t["']?$/, '\t');
+    if (!MapShaper.isSupportedDelimiter(o.delimiter)) {
+      error("Unsupported delimiter:", o.delimiter);
+    }
+  }
+
   if (o.encoding) {
     o.encoding = MapShaper.validateEncoding(o.encoding);
   }
@@ -11654,6 +11684,9 @@ MapShaper.getOptionParser = function() {
     .option("topojson-precision", {
       // describe: "pct of avg segment length for rounding (0.02 is default)",
       type: "number"
+    })
+    .option("delimiter", {
+      describe: "(CSV) field delimiter"
     });
 
   parser.command('simplify')
@@ -12450,7 +12483,7 @@ api.dissolvePolygons2 = function(lyr, dataset, opts) {
 MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   opts = opts || {};
   var getGroupId = MapShaper.getCategoryClassifier(opts.field, lyr.data);
-  var lyr2 = {data: null};
+  var lyr2 = MapShaper.getOutputLayer(lyr, opts);
   var groups = lyr.shapes.reduce(function(groups, shape, i) {
     var i2 = getGroupId(i);
     if (i2 in groups === false) {
@@ -12470,7 +12503,7 @@ MapShaper.dissolvePolygonLayer = function(lyr, nodes, opts) {
   if (lyr.data) {
     lyr2.data = new DataTable(MapShaper.calcDissolveData(lyr.data.getRecords(), getGroupId, opts));
   }
-  return utils.defaults(lyr2, lyr);
+  return lyr2;
 };
 
 MapShaper.concatShapes = function(shapes) {
@@ -12563,13 +12596,16 @@ MapShaper.roundPoints = function(lyr, round) {
 MapShaper.exportDelim = function(dataset, opts) {
   var delim = MapShaper.getExportDelimiter(dataset.info, opts),
       ext = MapShaper.getDelimFileExtension(delim, opts);
-  return dataset.layers.map(function(lyr) {
-    return {
-      // TODO: consider supporting encoding= option
-      content: MapShaper.exportDelimTable(lyr, delim),
-      filename: (lyr.name || 'output') + '.' + ext
-    };
-  });
+  return dataset.layers.reduce(function(arr, lyr) {
+    if (lyr.data){
+      arr.push({
+        // TODO: consider supporting encoding= option
+        content: MapShaper.exportDelimTable(lyr, delim),
+        filename: (lyr.name || 'output') + '.' + ext
+      });
+    }
+    return arr;
+  }, []);
 };
 
 MapShaper.exportDelimTable = function(lyr, delim) {
@@ -12802,6 +12838,7 @@ var ExportControl = function(model) {
     exportButton("#geojson-btn", "geojson");
     exportButton("#shapefile-btn", "shapefile");
     exportButton("#topojson-btn", "topojson");
+    exportButton("#csv-btn", "dsv");
     model.addMode('export', turnOn, turnOff);
     new ModeButton('#export-btn', 'export', model);
   }
@@ -13122,19 +13159,18 @@ function RepairControl(model, map) {
       readout = el.findChild("#intersection-count"),
       btn = el.findChild("#repair-btn"),
       _self = this,
-      _dataset, _currXX, _initialXX;
+      _dataset, _currXX;
 
   model.on('update', function(e) {
-    // these changes require nulling out any cached intersection data and recalculating
-    if (e.flags.simplify || e.flags.proj || e.flags.select) {
+    if (e.flags.simplify || e.flags.proj) {
+      // these changes require nulling out any cached intersection data and recalculating
+      if (_dataset) _dataset.info.intersections = null;
+      delayedUpdate();
+    } else if (e.flags.select && !e.flags.import) {
+      // Don't update if a dataset was just imported -- another layer may be
+      // selected right away.
       reset();
-      // Don't update if a dataset was just imported -- another layer may be selected
-      // right away.
-      if (!e.flags.import) {
-        // use timeout so map refreshes before the repair control calculates
-        // intersection data, which can take a little while
-        delayedUpdate();
-      }
+      delayedUpdate();
     }
   });
 
@@ -13162,15 +13198,16 @@ function RepairControl(model, map) {
     var XX, showBtn, pct;
     if (!_dataset) return;
     if (_dataset.arcs.getRetainedInterval() > 0) {
+      // TODO: cache these intersections
       XX = MapShaper.findSegmentIntersections(_dataset.arcs);
       showBtn = XX.length > 0;
     } else { // no simplification
-      if (!_initialXX) {
-        // cache intersections for no simplification, to avoid recalculating
-        // every time the simplification slider is set to 100%
-        _initialXX = MapShaper.findSegmentIntersections(_dataset.arcs);
+      XX = _dataset.info.intersections;
+      if (!XX) {
+        // cache intersections at 0 simplification, to avoid recalculating
+        // every time the simplification slider is set to 100% or the layer is selected at 100%
+        XX = _dataset.info.intersections = MapShaper.findSegmentIntersections(_dataset.arcs);
       }
-      XX = _initialXX;
       showBtn = false;
     }
     el.show();
@@ -13192,7 +13229,6 @@ function RepairControl(model, map) {
   function reset() {
     _dataset = null;
     _currXX = null;
-    _initialXX = null;
     _self.hide();
   }
 
@@ -14052,7 +14088,7 @@ utils.inherit(MapExtent, EventDispatcher);
 function HitControl(ext, mouse) {
 
   var self = this;
-  var selectionId = -1;
+  var selectedId = -1;
   var hoverId = -1;
   var pinId = -1;
   var tests = {
@@ -14060,40 +14096,51 @@ function HitControl(ext, mouse) {
     polyline: polylineTest,
     point: pointTest
   };
-  var selection, test;
+  var selectedShape;
+  var target, test;
 
-  this.turnOn = function(o) {
-    selectionId = hoverId = pinId = -1;
-    selection = o;
+  this.start = function(o) {
+    this.stop();
+    target = o;
     test = tests[o.layer.geometry_type];
   };
 
-  this.turnOff = function() {
-    if (selection) {
+  this.stop = function() {
+    if (target) {
       pinId = -1;
       update(-1);
-      selection = null;
+      target = null;
       test = null;
+    }
+  };
+
+  // Check if data for current selected shape has changed; trigger change event
+  this.refresh = function() {
+    if (selectedShape && target.layer.shapes[selectedId] != selectedShape) {
+      select(-1);
+    } else {
+      select(selectedId); // re-trigger hit event
     }
   };
 
   document.addEventListener('keydown', function(e) {
     var kc = e.keyCode, n;
-    if (pinId > -1 && kc >= 37 && kc <= 40) {
-      n = MapShaper.getFeatureCount(selection.layer);
-      if (kc == 38 || kc == 37) {
-        pinId = (pinId + n - 1) % n;
+    if (pinId > -1 && (kc == 37 || kc == 39)) {
+      n = MapShaper.getFeatureCount(target.layer);
+      if (n > 1) {
+        if (kc == 37) {
+          pinId = (pinId + n - 1) % n;
+        } else {
+          pinId = (pinId + 1) % n;
+        }
+        select(pinId);
+        e.stopPropagation();
       }
-      if (kc == 39 || kc == 40) {
-        pinId = (pinId + 1) % n;
-      }
-      select(pinId);
-      e.stopPropagation();
     }
-  }, !!'capture');
+  }, !!'capture'); // preempt the layer control's arrow key handler
 
   mouse.on('click', function(e) {
-    if (!selection) return;
+    if (!target) return;
     if (pinId > -1 && hoverId == pinId) {
       // clicking on pinned shape: unpin
       pinId = -1;
@@ -14117,11 +14164,10 @@ function HitControl(ext, mouse) {
   //});
 
   mouse.on('hover', function(e) {
-    var tr, p;
-    if (selection && test && e.hover) {
-      tr = ext.getTransform();
-      p = tr.invert().transform(e.x, e.y);
-      test(p[0], p[1]);
+    var p;
+    if (target && test && e.hover) {
+      p = ext.getTransform().invert().transform(e.x, e.y);
+      update(test(p[0], p[1]));
     }
   });
 
@@ -14140,24 +14186,23 @@ function HitControl(ext, mouse) {
         cand;
     for (var i=0; i<cands.length; i++) {
       cand = cands[i];
-      if (geom.testPointInPolygon(x, y, cand.shape, selection.dataset.arcs)) {
+      if (geom.testPointInPolygon(x, y, cand.shape, target.dataset.arcs)) {
         hitId = cand.id;
         break;
       }
     }
     if (cands.length > 0 && hitId == -1) {
       // secondary detection: proximity, if not inside a polygon
-      hitId = findNearestCandidate(x, y, dist, cands, selection.dataset.arcs);
+      hitId = findNearestCandidate(x, y, dist, cands, target.dataset.arcs);
     }
-    update(hitId);
+    return hitId;
   }
 
   function polylineTest(x, y) {
     var dist = getHitBuffer(15),
         hitId = -1,
         cands = findHitCandidates(x, y, dist);
-    hitId = findNearestCandidate(x, y, dist, cands, selection.dataset.arcs);
-    update(hitId);
+    return findNearestCandidate(x, y, dist, cands, target.dataset.arcs);
   }
 
   function findNearestCandidate(x, y, dist, cands, arcs) {
@@ -14178,24 +14223,23 @@ function HitControl(ext, mouse) {
     var dist = getHitBuffer(25),
         limitSq = dist * dist,
         hitId = -1;
-    MapShaper.forEachPoint(selection.layer, function(p, id) {
+    MapShaper.forEachPoint(target.layer, function(p, id) {
       var distSq = distanceSq(x, y, p[0], p[1]);
       if (distSq < limitSq) {
         hitId = id;
         limitSq = distSq;
       }
     });
-    update(hitId);
+    return hitId;
   }
 
   function getProperties(id) {
-    return selection.layer.data ? selection.layer.data.getRecords()[id] : {};
+    return target.layer.data ? target.layer.data.getRecords()[id] : {};
   }
 
   function update(newId) {
     hoverId = newId;
-
-    if (pinId == -1 && hoverId != selectionId) {
+    if (pinId == -1 && hoverId != selectedId) {
       select(newId);
     }
     El('#map-layers').classed('hover', hoverId > -1);
@@ -14205,27 +14249,29 @@ function HitControl(ext, mouse) {
     var o = {
       pinned: pinId > -1,
       id: newId,
-      dataset: selection.dataset,
+      dataset: target.dataset,
       layer: {
-        geometry_type: selection.layer.geometry_type,
+        geometry_type: target.layer.geometry_type,
         shapes: []
       }
     };
+    selectedId = newId;
+    selectedShape = null;
     if (newId > -1) {
+      selectedShape = target.layer.shapes[newId];
       o.properties = getProperties(newId);
-      o.layer.shapes.push(selection.layer.shapes[newId]);
-      o.table = selection.layer.data;
+      o.layer.shapes.push(selectedShape);
+      o.table = target.layer.data;
     }
-    selectionId = newId;
     self.dispatchEvent('change', o);
   }
 
   function findHitCandidates(x, y, dist) {
-    var arcs = selection.dataset.arcs,
+    var arcs = target.dataset.arcs,
         index = {},
         cands = [],
         bbox = [];
-    selection.layer.shapes.forEach(function(shp, shpId) {
+    target.layer.shapes.forEach(function(shp, shpId) {
       var cand;
       for (var i = 0, n = shp && shp.length; i < n; i++) {
         arcs.getSimpleShapeBounds2(shp[i], bbox);
@@ -14345,15 +14391,23 @@ function InfoControl(model, hit) {
   var _popup = new Popup();
   var btn = gui.addSidebarButton("#info-icon").on('click', function() {
     btn.toggleClass('selected');
-    update();
+    reset();
   });
 
-  model.on('select', update);
+  model.on('update', function(e) {
+    if (isOn()) {
+      if (e.flags.select) {
+        reset();
+      } else {
+        hit.refresh();
+      }
+    }
+  });
 
   document.addEventListener('keydown', function(e) {
     if (e.keyCode == 27 && isOn() && !model.getMode()) { // esc key closes
       btn.toggleClass('selected');
-      update();
+      reset();
     }
   });
 
@@ -14373,12 +14427,12 @@ function InfoControl(model, hit) {
     return btn.hasClass('selected');
   }
 
-  function update() {
+  function reset() {
     _popup.hide();
     if (isOn()) {
-      hit.turnOn(model.getEditingLayer());
+      hit.start(model.getEditingLayer());
     } else {
-      hit.turnOff();
+      hit.stop();
     }
   }
 }
@@ -14414,6 +14468,7 @@ MapShaper.getBoundsOverlap = function(bb1, bb2) {
 // Test if map should be re-framed to show updated layer
 gui.mapNeedsReset = function(newBounds, prevBounds, mapBounds) {
   if (!prevBounds) return true;
+  if (prevBounds.xmin === 0 || newBounds.xmin === 0) return true; // kludge to handle tables
   // TODO: consider similarity of prev and next bounds
   //var overlapPct = 2 * MapShaper.getBoundsOverlap(newBounds, prevBounds) /
   //    (newBounds.area() + prevBounds.area());
@@ -14526,7 +14581,6 @@ function MshpMap(model) {
     updateGroupStyle(activeStyle, group);
     _activeGroup = group;
     needReset = gui.mapNeedsReset(group.getBounds(), prevBounds, _ext.getBounds());
-    needReset = needReset || e.layer.data_type == 'table'; // kludge to make tables recenter
     _ext.setBounds(group.getBounds()); // update map extent to match bounds of active group
     if (needReset) {
       // zoom to full view of the active layer and redraw
@@ -15591,11 +15645,9 @@ MapShaper.clipLayers = function(targetLayers, src, srcDataset, type, opts) {
       stop('[' + type + '] Invalid target layer:', targetLyr.name);
     }
 
-    if (opts.no_replace) {
-      outputLyr = utils.extend({}, targetLyr);
-      outputLyr.data = targetLyr.data ? targetLyr.data.clone() : null;
-    } else {
-      outputLyr = targetLyr;
+    outputLyr = MapShaper.getOutputLayer(targetLyr, opts);
+    if (opts.no_replace && targetLyr.data) {
+      outputLyr.data = targetLyr.data.clone();
     }
     outputLyr.shapes = clippedShapes;
 
@@ -15713,10 +15765,12 @@ api.dissolve = function(lyr, arcs, opts) {
     }
   }
 
-  return utils.defaults({
-      shapes: dissolveShapes,
-      data: dissolveData ? new DataTable(dissolveData) : null
-    }, lyr);
+  return {
+    name: opts.no_replace ? null : lyr.name,
+    shapes: dissolveShapes,
+    data: dissolveData ? new DataTable(dissolveData) : null,
+    geometry_type: lyr.geometry_type
+  };
 };
 
 // Get a function to convert original feature ids into ids of combined features
@@ -16487,7 +16541,8 @@ api.filterFeatures = function(lyr, arcs, opts) {
       n = MapShaper.getFeatureCount(lyr),
       filteredShapes = shapes ? [] : null,
       filteredRecords = records ? [] : null,
-      filteredLyr, filter;
+      filteredLyr = MapShaper.getOutputLayer(lyr, opts),
+      filter;
 
   if (opts.expression) {
     filter = MapShaper.compileFeatureExpression(opts.expression, lyr, arcs);
@@ -16511,16 +16566,11 @@ api.filterFeatures = function(lyr, arcs, opts) {
     }
   });
 
-  filteredLyr = {
-    data: filteredRecords ? new DataTable(filteredRecords) : null,
-    shapes: filteredShapes
-  };
+  filteredLyr.shapes = filteredShapes;
+  filteredLyr.data = filteredRecords ? new DataTable(filteredRecords) : null;
   if (opts.no_replace) {
     // if adding a layer, don't share objects between source and filtered layer
     filteredLyr = MapShaper.copyLayer(filteredLyr);
-    filteredLyr.geometry_type = lyr.geometry_type;
-  } else {
-    filteredLyr = utils.extend(lyr, filteredLyr); // modify in-place
   }
 
   if (opts.verbose !== false) {
@@ -17094,9 +17144,14 @@ MapShaper.importDelimTable = function(str, delim, opts) {
   return new DataTable(records);
 };
 
+MapShaper.supportedDelimiters = ['|', '\t', ',', ';'];
+
+MapShaper.isSupportedDelimiter = function(d) {
+  return utils.contains(MapShaper.supportedDelimiters, d);
+};
+
 MapShaper.guessDelimiter = function(content) {
-  var delimiters = ['|', '\t', ','];
-  return utils.find(delimiters, function(delim) {
+  return utils.find(MapShaper.supportedDelimiters, function(delim) {
     var rxp = MapShaper.getDelimiterRxp(delim);
     return rxp.test(content);
   }) || ',';
@@ -17581,11 +17636,11 @@ api.mergeFiles = function(files, opts) {
 
 
 api.createPointLayer = function(srcLyr, arcs, opts) {
-  var destLyr = {geometry_type: 'point'};
-
+  var destLyr = MapShaper.getOutputLayer(srcLyr, opts);
   destLyr.shapes = opts.x || opts.y ?
       MapShaper.pointsFromDataTable(srcLyr.data, opts) :
       MapShaper.pointsFromPolygons(srcLyr, arcs, opts);
+  destLyr.geometry_type = 'point';
 
   var nulls = destLyr.shapes.reduce(function(sum, shp) {
     if (!shp) sum++;
@@ -18473,7 +18528,7 @@ api.runCommand = function(cmd, dataset, cb) {
   var name = cmd.name,
       opts = cmd.options,
       targetLayers,
-      newLayers,
+      outputLayers,
       arcs;
 
   try { // catch errors from synchronous functions
@@ -18501,25 +18556,25 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.calc, targetLayers, arcs, opts);
 
     } else if (name == 'clip') {
-      newLayers = api.clipLayers(targetLayers, opts.source, dataset, opts);
+      outputLayers = api.clipLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'dissolve') {
-      newLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.dissolve, targetLayers, arcs, opts);
 
     } else if (name == 'dissolve2') {
-      newLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
+      outputLayers = MapShaper.applyCommand(api.dissolvePolygons2, targetLayers, dataset, opts);
 
     } else if (name == 'each') {
       MapShaper.applyCommand(api.evaluateEachFeature, targetLayers, arcs, opts.expression);
 
     } else if (name == 'erase') {
-      newLayers = api.eraseLayers(targetLayers, opts.source, dataset, opts);
+      outputLayers = api.eraseLayers(targetLayers, opts.source, dataset, opts);
 
     } else if (name == 'explode') {
-      newLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.explodeFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter') {
-      newLayers = MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.filterFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'filter-fields') {
       MapShaper.applyCommand(api.filterFields, targetLayers, opts.fields);
@@ -18528,7 +18583,7 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.filterIslands, targetLayers, arcs, opts);
 
     } else if (name == 'flatten') {
-      newLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
+      outputLayers = MapShaper.applyCommand(api.flattenLayer, targetLayers, dataset, opts);
 
     } else if (name == 'i') {
       dataset = api.importFiles(cmd.options);
@@ -18537,29 +18592,29 @@ api.runCommand = function(cmd, dataset, cb) {
       api.printInfo(dataset);
 
     } else if (name == 'innerlines') {
-      newLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
+      outputLayers = MapShaper.applyCommand(api.convertPolygonsToInnerLines, targetLayers, arcs);
 
     } else if (name == 'join') {
       MapShaper.applyCommand(api.join, targetLayers, dataset, opts);
 
     } else if (name == 'layers') {
-      newLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
+      outputLayers = MapShaper.applyCommand(api.filterLayers, dataset.layers, opts.layers);
 
     } else if (name == 'lines') {
-      newLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
+      outputLayers = MapShaper.applyCommand(api.convertPolygonsToTypedLines, targetLayers, arcs, opts.fields);
 
     } else if (name == 'stitch') {
       api.stitch(dataset);
 
     } else if (name == 'merge-layers') {
       // careful, returned layers are modified input layers
-      newLayers = api.mergeLayers(targetLayers);
+      outputLayers = api.mergeLayers(targetLayers);
 
     } else if (name == 'o') {
       api.exportFiles(utils.defaults({layers: targetLayers}, dataset), opts);
 
     } else if (name == 'points') {
-      newLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
+      outputLayers = MapShaper.applyCommand(api.createPointLayer, targetLayers, arcs, opts);
 
     } else if (name == 'proj') {
       api.proj(dataset, opts);
@@ -18571,7 +18626,7 @@ api.runCommand = function(cmd, dataset, cb) {
       api.renameLayers(targetLayers, opts.names);
 
     } else if (name == 'repair') {
-      newLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
+      outputLayers = MapShaper.repairPolygonGeometry(targetLayers, dataset, opts);
 
     } else if (name == 'simplify') {
       api.simplify(arcs, opts);
@@ -18583,30 +18638,33 @@ api.runCommand = function(cmd, dataset, cb) {
       MapShaper.applyCommand(api.sortFeatures, targetLayers, arcs, opts);
 
     } else if (name == 'split') {
-      newLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, opts.field, opts);
+      outputLayers = MapShaper.applyCommand(api.splitLayer, targetLayers, opts.field, opts);
 
     } else if (name == 'split-on-grid') {
-      newLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
+      outputLayers = MapShaper.applyCommand(api.splitLayerOnGrid, targetLayers, arcs, opts.rows, opts.cols);
 
     } else if (name == 'subdivide') {
-      newLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
+      outputLayers = MapShaper.applyCommand(api.subdivideLayer, targetLayers, arcs, opts.expression);
 
     } else {
       error("Unhandled command: [" + name + "]");
     }
 
+    // apply name parameter
     if (opts.name) {
-      (newLayers || targetLayers).forEach(function(lyr) {
+      // TODO: consider uniqifying multiple layers here
+      (outputLayers || targetLayers).forEach(function(lyr) {
         lyr.name = opts.name;
       });
     }
 
-    if (newLayers) {
+    // integrate output layers into the dataset
+    if (outputLayers) {
       if (opts.no_replace) {
-        dataset.layers = dataset.layers.concat(newLayers);
+        dataset.layers = dataset.layers.concat(outputLayers);
       } else {
         // TODO: consider replacing old layers as they are generated, for gc
-        MapShaper.replaceLayers(dataset, targetLayers, newLayers);
+        MapShaper.replaceLayers(dataset, targetLayers, outputLayers);
       }
     }
   } catch(e) {
@@ -18926,6 +18984,8 @@ function Console(model) {
       capture = true;
       if (kc == 13) { // enter
         submit();
+      } else if (kc == 9) { // tab
+        tabComplete();
       } else if (kc == 38) {
         back();
       } else if (kc == 40) {
@@ -18955,6 +19015,30 @@ function Console(model) {
     if (capture) {
       e.preventDefault();
     }
+  }
+
+  // tab-completion for field names
+  function tabComplete() {
+    var line = readCommandLine(),
+        match = /\w+$/.exec(line),
+        stub = match ? match[0] : '',
+        lyr = model.getEditingLayer().layer,
+        names, name;
+    if (stub && lyr.data) {
+      names = findCompletions(stub, lyr.data.getFields());
+      if (names.length > 0) {
+        name = MapShaper.getCommonFileBase(names);
+        if (name.length > stub.length) {
+          input.node().value = line.substring(0, match.index) + name;
+        }
+      }
+    }
+  }
+
+  function findCompletions(str, fields) {
+    return fields.filter(function(name) {
+      return name.indexOf(str) === 0;
+    });
   }
 
   function readCommandLine() {
@@ -19231,7 +19315,7 @@ function Model() {
   this.updated = function(flags, lyr, dataset) {
     var e;
     flags = flags || {};
-    if (lyr && dataset && (!editing || editing.lyr != lyr)) {
+    if (lyr && dataset && (!editing || editing.layer != lyr)) {
       setEditingLayer(lyr, dataset);
       flags.select = true;
     }
