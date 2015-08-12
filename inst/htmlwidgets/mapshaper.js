@@ -55,6 +55,15 @@ HTMLWidgets.widget({
 
     dropEvent.dataTransfer = { files: jsonFiles }
 
+    // do two things here to get the R data integrated
+    //  1.  try to use setTimeout for delayed add once
+    //        mapshaper has finished loading
+    setTimeout(
+      function(){document.body.dispatchEvent( dropEvent );}
+      ,5e2
+    )
+    //  2.  if timeout fails, then provide a button for
+    //        manual integration of R data
     document.getElementById('r-selection-btn').onclick = function(){
       document.body.dispatchEvent( dropEvent );
     }
