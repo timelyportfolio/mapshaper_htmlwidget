@@ -1,32 +1,7 @@
-/*
-@import url(http://fonts.googleapis.com/css?family=Source+Sans+Pro:400,600);
-*/
 
-@font-face {
-  font-family: 'Source Sans Pro';
-  font-style: normal;
-  font-weight: 400;
-  src: local('Source Sans Pro'), local('SourceSansPro-Regular'), url(SourceSansPro-Regular.woff) format('woff');
-}
-
-@font-face {
-  font-family: 'Source Sans Pro';
-  font-style: normal;
-  font-weight: 600;
-  src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url(SourceSansPro-Semibold.woff) format('woff');
-}
-
-html, body {
-	height: 100%;
-	width: 100%;
-	margin: 0;
-	padding: 0;
-}
-
-body {
-	overflow: hidden;
+.mapshaper {
 	background-color: #fff;
-	font: 14px/1.4 'Source Sans Pro', Helvetica, sans-serif;
+	font: 14px/1.4;
 	color: #444;
 }
 
@@ -179,7 +154,7 @@ body {
 	right: 0;
 	bottom: 0;
 	left: 0;
-	margin: 32px 0 0 0;	
+	margin: 32px 0 0 0;
 }
 
 
@@ -256,7 +231,7 @@ div.error-box > div {
 
 .popup-dialog {
 	display: none;
-	z-index: 80;	
+	z-index: 80;
 	text-align: center;
 }
 
@@ -704,7 +679,7 @@ body.simplify #layer-control-btn {
 	display: inline-block;
 }
 
-#simplify-control .track {   	
+#simplify-control .track {
   	border-radius: 2px;
 	width: 340px;
 	background-color: #fff;
