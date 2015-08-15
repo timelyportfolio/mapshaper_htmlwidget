@@ -165,6 +165,7 @@ interface. Examples: "bbox" "no-quantization"
   <div id="topojson-btn" class="btn dialog-btn">TopoJSON</div>
   <div id="csv-btn" class="btn dialog-btn">CSV</div>
   </div>
+  <input type="checkbox" id = "shiny-checkbox">Shiny</input>
   </div>
   </div>
 
