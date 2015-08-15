@@ -306,7 +306,9 @@ div.error-box > div {
 
 #mshp-main-page {
 /*position:relative*/
-	height: 100%;
+  position: absolute;
+  top: 30px;
+	height: 95%;
 	width: 100%;
 }
 
