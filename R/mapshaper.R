@@ -73,7 +73,7 @@ renderMapshaper <- function(expr, env = parent.frame(), quoted = FALSE) {
 
 # custom mapshaper html
 mapshaper_html <- function(name, package, id, style, class, ...){
-  htmltools::tags$div(id = id, style = style, class = class, ...
+  htmltools::tags$div(id = id, style = style, style = "position:relative;", class = class, ...
   ,
 htmltools::HTML('
 <div class="hidden">

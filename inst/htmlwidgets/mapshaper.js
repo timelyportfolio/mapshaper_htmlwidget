@@ -6,6 +6,12 @@ HTMLWidgets.widget({
 
   initialize: function(el, width, height) {
 
+    // remove position:relative if standalone which
+    //   gives us an parentNode with id = "htmlwidget_container"
+    if(el.parentNode.id === "htmlwidget_container"){
+      el.style.position = "inherit";
+    }
+
     return {
       // TODO: add instance fields as required
     }
